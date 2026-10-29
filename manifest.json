@@ -1,0 +1,18 @@
+{
+  "name": "ARstore — Buy, Sell & Discover",
+  "short_name": "ARstore",
+  "description": "White & black responsive marketplace with seller, customer and admin dashboards. Built with Bootstrap.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#111111",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%23111111'/><text x='50' y='70' font-size='46' font-weight='bold' text-anchor='middle' fill='%23ffffff'>AR</text></svg>",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
