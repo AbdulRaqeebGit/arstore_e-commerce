@@ -24,14 +24,70 @@ App.Views = (function () {
     return { avg, n: rs.length };
   }
 
+  function toggleWishlist(id) {
+    const p = S.getProducts().find((x) => x.id === id);
+    if (!p) return;
+    let wish = S.getWishlist();
+    const idx = wish.findIndex((x) => x.id === id);
+    if (idx >= 0) {
+      wish.splice(idx, 1);
+      S.saveWishlist(wish);
+      U.toast("Removed from Wishlist", "info");
+    } else {
+      wish.push(p);
+      S.saveWishlist(wish);
+      U.toast("Added to Wishlist ❤️", "success");
+    }
+    App.router.refresh();
+  }
+
+  function addToCartQuick(id) {
+    const p = S.getProducts().find((x) => x.id === id);
+    if (!p) return;
+    if (p.stock < 1) {
+      U.toast("This product is out of stock.", "warn");
+      return;
+    }
+    const cart = S.getCart();
+    const existing = cart.find((x) => x.id === p.id);
+    if (existing) {
+      if (existing.qty >= p.stock) {
+        U.toast("Cannot add more than available stock (" + p.stock + ").", "warn");
+        return;
+      }
+      existing.qty = (existing.qty || 1) + 1;
+    } else {
+      cart.push({
+        id: p.id,
+        productId: p.id,
+        title: p.title,
+        price: p.price,
+        image: p.image,
+        emoji: p.emoji,
+        sellerId: p.sellerId,
+        sellerName: p.sellerName,
+        category: p.category,
+        stock: p.stock,
+        qty: 1
+      });
+    }
+    S.saveCart(cart);
+    U.toast("Added to Cart 🛍️", "success");
+    App.router.refresh();
+  }
+
   function productCard(p) {
     const r = ratingSummary(p.id);
+    const inWish = S.getWishlist().some((w) => w.id === p.id);
     return (
       '<div class="col">' +
       '<div class="card h-100 product-card border-0 shadow-sm" onclick="App.router.go(\'product\',\'' + p.id + '\')">' +
       '<div class="ratio ratio-1x1 product-img">' +
       '<img src="' + U.esc(p.image) + '" alt="' + U.esc(p.title) + '" loading="lazy" ' +
       'onerror="this.onerror=null;this.src=\'' + S.svgProduct(p.emoji || "🛍️", "#ededed", "#d8d8d8") + '\'">' +
+      '<button class="card-wish-btn ' + (inWish ? 'active' : '') + '" onclick="event.stopPropagation();App.Views.toggleWishlist(\'' + p.id + '\')" title="' + (inWish ? 'Remove from Wishlist' : 'Add to Wishlist') + '">' +
+      '<i class="bi ' + (inWish ? 'bi-heart-fill' : 'bi-heart') + '"></i>' +
+      '</button>' +
       '<div class="product-hover"><span><i class="bi bi-eye"></i> View details</span></div>' +
       '</div>' +
       '<div class="card-body d-flex flex-column p-3">' +
@@ -41,7 +97,10 @@ App.Views = (function () {
       '<span class="text-secondary">' + (r.n ? r.avg.toFixed(1) + " (" + r.n + ")" : "New") + '</span></div>' +
       '<div class="mt-auto d-flex justify-content-between align-items-center pt-2">' +
       '<span class="fw-bold fs-6">' + U.money(p.price) + '</span>' +
-      '<span class="small text-secondary text-truncate" style="max-width:110px">' + U.esc(p.sellerName || "Seller") + '</span>' +
+      '<div class="d-flex align-items-center gap-2">' +
+      '<span class="small text-secondary text-truncate" style="max-width:85px">' + U.esc(p.sellerName || "Seller") + '</span>' +
+      '<button class="card-cart-btn" onclick="event.stopPropagation();App.Views.addToCartQuick(\'' + p.id + '\')" title="Add to Cart"><i class="bi bi-cart-plus"></i></button>' +
+      '</div>' +
       '</div></div></div></div>'
     );
   }
