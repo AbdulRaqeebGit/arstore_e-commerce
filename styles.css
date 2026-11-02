@@ -270,7 +270,7 @@ body {
 .chat-input button:last-child { background: var(--ink); color: #fff; border: none; }
 
 /* ---------------- skeleton ---------------- */
-.skeleton { background: linear-gradient(90deg, #f1f1f3 25%, #e9e9ec 37%, #f1f1f3 63%); background-size: 400% 100%; animation: shimmer 1.4s ease infinite linear; border-radius: 16px; }
+.skeleton { background: linear-gradient(90deg, #f1f1f3 25%, #e9e9ec 37%, #f1f1f3 63%); background-size: 400% 100%; animation: shimmer 1.4s linear infinite; border-radius: 16px; }
 .skeleton-hero { height: 300px; margin-bottom: 18px; }
 .skeleton-card { height: 280px; }
 

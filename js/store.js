@@ -81,6 +81,37 @@ App.Store = (function () {
     }, 700);
   }
 
+  async function getDefaultDemoUsers() {
+    const adminPw = await U.hashPassword(App.CONFIG.admin.password, "admin");
+    const sellerPw = await U.hashPassword("seller123", "demo");
+    const custPw = await U.hashPassword("customer123", "demo");
+    const now = Date.now();
+    return [
+      { id: "u_admin", name: App.CONFIG.admin.name, email: App.CONFIG.admin.email.toLowerCase(), role: "admin", pw: adminPw, salt: "admin", createdAt: now, phone: "+92 300 0000000", city: "Karachi" },
+      { id: "u_seller1", name: "Sara Traders", email: "seller@demo.com", role: "seller", pw: sellerPw, salt: "demo", createdAt: now - 86400000, phone: "+92 321 1112233", city: "Karachi" },
+      { id: "u_seller2", name: "Tech House", email: "tech@demo.com", role: "seller", pw: sellerPw, salt: "demo", createdAt: now - 2 * 86400000, phone: "+92 322 4445566", city: "Lahore" },
+      { id: "u_seller3", name: "Style Hub", email: "style@demo.com", role: "seller", pw: sellerPw, salt: "demo", createdAt: now - 3 * 86400000, phone: "+92 323 7778899", city: "Islamabad" },
+      { id: "u_cust1", name: "Ahmed Khan", email: "customer@demo.com", role: "customer", pw: custPw, salt: "demo", createdAt: now - 3600000, phone: "+92 333 7778899", city: "Karachi" },
+    ];
+  }
+
+  async function ensureDefaultUsers(list) {
+    list = Array.isArray(list) ? list.slice() : [];
+    const defaults = await getDefaultDemoUsers();
+    defaults.forEach((def) => {
+      const idx = list.findIndex((u) => u.email && u.email.toLowerCase() === def.email.toLowerCase());
+      if (idx === -1) {
+        list.push(def);
+      } else {
+        if (list[idx].salt === "demo" || list[idx].salt === "admin") {
+          list[idx].pw = def.pw;
+          list[idx].salt = def.salt;
+        }
+      }
+    });
+    return list;
+  }
+
   async function pullFromSupabase() {
     const sb = App.Supabase;
     if (!sb || !sb.configured()) return false;
@@ -89,14 +120,14 @@ App.Store = (function () {
     if (!d) return false;
 
     // Supabase is the source of truth once its tables exist.
-    // Products come ONLY from sellers — never from local demo data.
     const hasProducts = Array.isArray(d.products) && d.products.length > 0;
-    const users = (Array.isArray(d.users) && d.users.length) ? d.users : getUsers();
+    let users = (Array.isArray(d.users) && d.users.length) ? d.users : getUsers();
+    users = await ensureDefaultUsers(users);
     const orders = Array.isArray(d.orders) ? d.orders : getOrders();
-    const reviews = hasProducts && Array.isArray(d.reviews) ? d.reviews : [];
+    const reviews = Array.isArray(d.reviews) ? d.reviews : [];
 
     localStorage.setItem(KEYS.users, JSON.stringify(users));
-    localStorage.setItem(KEYS.products, JSON.stringify(hasProducts ? d.products : []));
+    localStorage.setItem(KEYS.products, JSON.stringify(hasProducts ? d.products : getProducts()));
     localStorage.setItem(KEYS.reviews, JSON.stringify(reviews));
     localStorage.setItem(KEYS.orders, JSON.stringify(orders));
     localStorage.setItem(KEYS.seeded, JSON.stringify(true));
@@ -110,9 +141,14 @@ App.Store = (function () {
       const r = await fetch(API, { cache: "no-store" });
       if (!r.ok) return false;
       const d = await r.json();
-      if (d && Array.isArray(d.products) && d.products.length) {
-        localStorage.setItem(KEYS.users, JSON.stringify(d.users || []));
-        localStorage.setItem(KEYS.products, JSON.stringify(d.products));
+      if (d && (
+        (Array.isArray(d.products) && d.products.length > 0) ||
+        (Array.isArray(d.users) && d.users.length > 0)
+      )) {
+        let users = d.users || getUsers();
+        users = await ensureDefaultUsers(users);
+        localStorage.setItem(KEYS.users, JSON.stringify(users));
+        localStorage.setItem(KEYS.products, JSON.stringify(d.products || []));
         localStorage.setItem(KEYS.reviews, JSON.stringify(d.reviews || []));
         localStorage.setItem(KEYS.orders, JSON.stringify(d.orders || []));
         localStorage.setItem(KEYS.seeded, JSON.stringify(true));
@@ -123,10 +159,10 @@ App.Store = (function () {
   }
 
   async function init() {
+    await seed();
     if (await pullFromSupabase()) return;
     const remote = await hydrate();
     if (remote) { status = "cloud"; return; }
-    await seed();
     status = "cloud";
     queuePush();
     SYNC_KEYS.forEach(function (k) { queueSupabase(k); });
@@ -168,20 +204,13 @@ App.Store = (function () {
 
   /* ---- seed demo data ---- */
   async function seed() {
-    if (read(KEYS.seeded, false)) return;
+    if (read(KEYS.seeded, false)) {
+      const ensured = await ensureDefaultUsers(getUsers());
+      saveUsers(ensured);
+      return;
+    }
 
-    const adminPw = await U.hashPassword(App.CONFIG.admin.password, "admin");
-    const sellerPw = await U.hashPassword("seller123", "demo");
-    const custPw = await U.hashPassword("customer123", "demo");
-
-    const now = Date.now();
-    const users = [
-      { id: "u_admin", name: App.CONFIG.admin.name, email: App.CONFIG.admin.email, role: "admin", pw: adminPw, salt: "admin", createdAt: now, phone: "+92 300 0000000", city: "Karachi" },
-      { id: "u_seller1", name: "Sara Traders", email: "seller@demo.com", role: "seller", pw: sellerPw, salt: "demo", createdAt: now - 86400000, phone: "+92 321 1112233", city: "Karachi" },
-      { id: "u_seller2", name: "Tech House", email: "tech@demo.com", role: "seller", pw: sellerPw, salt: "demo", createdAt: now - 2 * 86400000, phone: "+92 322 4445566", city: "Lahore" },
-      { id: "u_seller3", name: "Style Hub", email: "style@demo.com", role: "seller", pw: sellerPw, salt: "demo", createdAt: now - 3 * 86400000, phone: "+92 323 7778899", city: "Islamabad" },
-      { id: "u_cust1", name: "Ahmed Khan", email: "customer@demo.com", role: "customer", pw: custPw, salt: "demo", createdAt: now - 3600000, phone: "+92 333 7778899", city: "Karachi" },
-    ];
+    const users = await ensureDefaultUsers([]);
 
     // [sellerId, sellerName, title, emoji, category, price, stock, desc, photoId, palette, city, lat, lng]
     const rows = [
@@ -274,6 +303,7 @@ App.Store = (function () {
     write(KEYS.reviews, []);
     write(KEYS.orders, []);
     write(KEYS.cart, []);
+    write(KEYS.wishlist, []);
     write(KEYS.seeded, true);
   }
 

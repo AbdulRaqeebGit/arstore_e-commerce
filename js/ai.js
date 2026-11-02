@@ -32,7 +32,7 @@ App.AI = (function () {
   }
 
   function geminiModel() {
-    return App.CONFIG?.gemini?.model || "gemini-2.5-flash";
+    return App.CONFIG?.gemini?.model || "gemini-1.5-flash";
   }
 
   // -------------------------------------------------------
@@ -272,7 +272,7 @@ App.AI = (function () {
     let label = String(query || "").trim();
 
     // Use Gemini to understand an uploaded photo
-    if (imageDataUrl) {
+    if (imageDataUrl && imageDataUrl.startsWith("data:")) {
       try {
         const description = await callGemini(
           "Identify the visible product in this image. " +
@@ -409,7 +409,8 @@ App.AI = (function () {
         "Product title: " + String(title || "Product") + "\n" +
         "Existing description: " + String(description || "Not provided");
 
-      const response = await callGemini(prompt, imageDataUrl || undefined);
+      const validImg = (imageDataUrl && imageDataUrl.startsWith("data:")) ? imageDataUrl : undefined;
+      const response = await callGemini(prompt, validImg);
 
       const jsonMatch = response.match(/\{[\s\S]*\}/);
 

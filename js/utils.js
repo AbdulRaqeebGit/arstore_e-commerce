@@ -139,9 +139,17 @@ App.Utils = (function () {
     });
   }
 
+  function toRgb(c) {
+    if (!c) return { r: 0, g: 0, b: 0 };
+    if (Array.isArray(c)) return { r: Number(c[0]) || 0, g: Number(c[1]) || 0, b: Number(c[2]) || 0 };
+    return { r: Number(c.r) || 0, g: Number(c.g) || 0, b: Number(c.b) || 0 };
+  }
+
   function colorDistance(a, b) {
+    const c1 = toRgb(a);
+    const c2 = toRgb(b);
     return Math.sqrt(
-      (a.r - b.r) ** 2 + (a.g - b.g) ** 2 + (a.b - b.b) ** 2
+      (c1.r - c2.r) ** 2 + (c1.g - c2.g) ** 2 + (c1.b - c2.b) ** 2
     );
   }
 

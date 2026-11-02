@@ -52,8 +52,9 @@
           reg.update().catch(function () {});
         }).catch(function () {});
         var refreshing = false;
+        var hadController = Boolean(navigator.serviceWorker.controller);
         navigator.serviceWorker.addEventListener('controllerchange', function () {
-          if (refreshing) return;
+          if (refreshing || !hadController) return;
           refreshing = true;
           location.reload();
         });

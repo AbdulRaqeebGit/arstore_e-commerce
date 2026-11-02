@@ -31,10 +31,10 @@ App.CONFIG = {
   },
 
   /* ---------- Gemini AI ---------- */
-gemini: {
-  key: "",
-  model: "gemini-4-argon",
-},
+  gemini: {
+    key: "",
+    model: "gemini-1.5-flash",
+  },
 
   /* ---------- Maps ---------- */
   maps: {

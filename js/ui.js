@@ -7,7 +7,7 @@ App.UI = (function () {
   const A = App.Auth;
 
   /* ---------- Lens modal ---------- */
-  async function openLens(seedImage) {
+  async function openLens(seedImage, seedProductId) {
     U.closeModal();
     U.modal(
       '<div class="lens">' +
@@ -35,9 +35,13 @@ App.UI = (function () {
         const im = document.getElementById("lensImg");
         im.src = seedImage; im.style.display = "block";
         const pal = U.extractPalette(img, 24, 4);
-        const ranked = S.getProducts().map((p) => ({ product: p, d: p.palette ? U.paletteDistance(pal, p.palette) : 1e9 }))
-          .sort((a, b) => a.d - b.d).slice(0, 6);
-        renderLensResults(document.getElementById("lensResults"), ranked.map((r) => ({ product: r.product, similarity: Math.max(0, Math.round(100 - r.d / 3)) })));
+        const ranked = S.getProducts()
+          .filter((p) => !seedProductId || p.id !== seedProductId)
+          .map((p) => ({ product: p, d: p.palette ? U.paletteDistance(pal, p.palette) : 1e9 }))
+          .filter((r) => !isNaN(r.d) && r.d < 300)
+          .sort((a, b) => a.d - b.d)
+          .slice(0, 6);
+        renderLensResults(document.getElementById("lensResults"), ranked.map((r) => ({ product: r.product, similarity: Math.max(0, Math.min(100, Math.round(100 - r.d / 3))) })));
       } catch (e) { /* ignore */ }
       return;
     }
@@ -67,7 +71,7 @@ App.UI = (function () {
 
   function lensFromProduct(id) {
     const p = S.getProducts().find((x) => x.id === id);
-    openLens(p ? p.image : null);
+    openLens(p ? p.image : null, id);
   }
 
   /* ---------- AI assistant chat widget ---------- */
@@ -102,6 +106,7 @@ App.UI = (function () {
       const text = input.value.trim();
       const imgEl = document.getElementById("chatImg");
       const img = imgEl.files[0] ? await U.fileToDataURL(imgEl.files[0]) : null;
+      imgEl.value = "";
       if (!text && !img) return;
       if (text) { addUser(text); input.value = ""; }
       if (img) { addUser("🖼️ [photo]", img); }

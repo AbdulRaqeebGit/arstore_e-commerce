@@ -39,17 +39,28 @@ function readBody(req) {
 }
 
 http.createServer(async (req, res) => {
+  // CORS support
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  if (req.method === "OPTIONS") {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
   const reqPath = (req.url || "/").split("?")[0];
 
   /* ---------------- API: persist app data ---------------- */
   if (reqPath === "/api/data") {
     if (req.method === "GET") {
-      fs.readFile(DATA_FILE, (err, data) => {
+      fs.readFile(DATA_FILE, "utf8", (err, data) => {
         res.writeHead(200, {
           "Content-Type": "application/json",
           "Cache-Control": "no-store",
         });
-        res.end(err ? "{}" : data);
+        res.end(err || !data || !data.trim() ? "{}" : data);
       });
       return;
     }
@@ -57,7 +68,7 @@ http.createServer(async (req, res) => {
       try {
         const raw = await readBody(req);
         const obj = JSON.parse(raw || "{}");
-        fs.writeFile(DATA_FILE, JSON.stringify(obj), (err) => {
+        fs.writeFile(DATA_FILE, JSON.stringify(obj, null, 2), (err) => {
           res.writeHead(err ? 500 : 200, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ ok: !err }));
         });
@@ -86,9 +97,9 @@ http.createServer(async (req, res) => {
       const obj = JSON.parse(raw || "{}");
       const m = /^data:image\/([a-z0-9+]+);base64,(.+)$/i.exec(obj.data || "");
       if (!m) throw new Error("invalid image data");
-      const extMap = { jpeg: "jpg", jpg: "jpg", png: "png", webp: "webp", gif: "gif", svg: "svg" };
+      const extMap = { jpeg: "jpg", jpg: "jpg", png: "png", webp: "webp", gif: "gif", svg: "svg", "svg+xml": "svg" };
       const ext = extMap[m[1].toLowerCase()] || "jpg";
-      const buf = Buffer.from(m[2], "base64");
+      const buf = Buffer.from(m[2].replace(/\s/g, ""), "base64");
       if (buf.length > 8 * 1024 * 1024) throw new Error("image too large (max 8MB)");
       if (!fs.existsSync(UPLOADS)) fs.mkdirSync(UPLOADS, { recursive: true });
       const name = "img_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8) + "." + ext;
@@ -106,7 +117,8 @@ http.createServer(async (req, res) => {
   let p = decodeURIComponent(reqPath);
   if (p === "/") p = "/index.html";
   const file = path.resolve(ROOT, "." + p);
-  const inside = file === ROOT || file.startsWith(ROOT + path.sep);
+  const rel = path.relative(ROOT, file);
+  const inside = !rel.startsWith("..") && !path.isAbsolute(rel);
   if (!inside) { res.writeHead(403); res.end("Forbidden"); return; }
 
   fs.readFile(file, (err, data) => {

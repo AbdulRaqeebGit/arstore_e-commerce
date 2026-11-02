@@ -64,9 +64,12 @@ App.Supabase = (function () {
   async function syncTable(table, rows) {
     if (!configured() || available === false) return false;
     try {
-      await request(table + "?id=not.is.null", { method: "DELETE", headers: { Prefer: "return=minimal" } });
       if (rows && rows.length) {
-        await request(table, { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify(rows) });
+        await request(table, {
+          method: "POST",
+          headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+          body: JSON.stringify(rows),
+        });
       }
       available = true;
       return true;
@@ -76,5 +79,18 @@ App.Supabase = (function () {
     }
   }
 
-  return { configured: configured, isAvailable: isAvailable, pull: pull, syncTable: syncTable };
+  async function deleteRow(table, id) {
+    if (!configured() || available === false) return false;
+    try {
+      await request(table + "?id=eq." + encodeURIComponent(id), {
+        method: "DELETE",
+        headers: { Prefer: "return=minimal" },
+      });
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  return { configured: configured, isAvailable: isAvailable, pull: pull, syncTable: syncTable, deleteRow: deleteRow };
 })();

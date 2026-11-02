@@ -27,9 +27,7 @@ App.router = (function () {
 
   function guard(route) {
     const me = A.current();
-    // Shop is viewable by any logged-in user (customer, seller, admin).
-    if (route === "customer") {
-      if (!me) { go("login"); return false; }
+    if (route === "" || route === "customer" || route === "product" || route === "login" || route === "cart" || route === "wishlist") {
       return true;
     }
     if (route === "seller") {
@@ -42,12 +40,7 @@ App.router = (function () {
       if (me.role !== "admin") { goHomeForRole(me.role); return false; }
       return true;
     }
-    if (route === "buy") {
-      if (!me) { go("login"); return false; }
-      if (me.role !== "customer") { goHomeForRole(me.role); return false; }
-      return true;
-    }
-    if (route === "settings") {
+    if (route === "buy" || route === "orders" || route === "settings") {
       if (!me) { go("login"); return false; }
       return true;
     }
@@ -57,17 +50,24 @@ App.router = (function () {
   function renderTopbar() {
     const me = A.current();
     const links = [];
-    const home = me ? (me.role === "admin" ? "#/admin" : me.role === "seller" ? "#/seller" : "#/customer") : "#/login";
+    const home = me ? (me.role === "admin" ? "#/admin" : me.role === "seller" ? "#/seller" : "#/customer") : "#/customer";
     if (!me) {
+      links.push('<li class="nav-item"><a href="#/customer" class="nav-link"><i class="bi bi-shop"></i> Shop</a></li>');
+      links.push('<li class="nav-item"><a href="#/cart" class="nav-link"><i class="bi bi-cart"></i> Cart</a></li>');
       links.push('<li class="nav-item"><a href="#/login" class="nav-link"><i class="bi bi-box-arrow-in-right"></i> Login</a></li>');
     } else if (me.role === "admin") {
       links.push('<li class="nav-item"><a href="#/admin" class="nav-link"><i class="bi bi-speedometer2"></i> Admin</a></li>');
+      links.push('<li class="nav-item"><a href="#/orders" class="nav-link"><i class="bi bi-receipt"></i> Orders</a></li>');
       links.push('<li class="nav-item"><a href="#/customer" class="nav-link"><i class="bi bi-shop"></i> Shop</a></li>');
     } else if (me.role === "seller") {
       links.push('<li class="nav-item"><a href="#/seller" class="nav-link"><i class="bi bi-bag-plus"></i> Sell</a></li>');
+      links.push('<li class="nav-item"><a href="#/orders" class="nav-link"><i class="bi bi-receipt"></i> Orders</a></li>');
       links.push('<li class="nav-item"><a href="#/customer" class="nav-link"><i class="bi bi-shop"></i> Shop</a></li>');
     } else {
       links.push('<li class="nav-item"><a href="#/customer" class="nav-link"><i class="bi bi-shop"></i> Shop</a></li>');
+      links.push('<li class="nav-item"><a href="#/orders" class="nav-link"><i class="bi bi-receipt"></i> My Orders</a></li>');
+      links.push('<li class="nav-item"><a href="#/wishlist" class="nav-link"><i class="bi bi-heart"></i> Wishlist</a></li>');
+      links.push('<li class="nav-item"><a href="#/cart" class="nav-link"><i class="bi bi-cart"></i> Cart</a></li>');
     }
     const userChip = me
       ? '<span class="d-flex align-items-center gap-2 border rounded-pill px-2 py-1">' +
@@ -116,6 +116,9 @@ App.router = (function () {
       S.saveUsers(S.getUsers().filter((u) => u.id !== id));
       S.saveProducts(S.getProducts().filter((p) => p.sellerId !== id));
       S.saveReviews(S.getReviews().filter((r) => r.userId !== id));
+      if (App.Supabase && App.Supabase.deleteRow) {
+        App.Supabase.deleteRow("users", id);
+      }
       U.closeModal();
       U.toast("User deleted.", "success");
       refresh();
@@ -131,9 +134,14 @@ App.router = (function () {
     document.getElementById("confirmDelProd").addEventListener("click", () => {
       S.saveProducts(S.getProducts().filter((p) => p.id !== id));
       S.saveReviews(S.getReviews().filter((r) => r.productId !== id));
+      if (App.Supabase && App.Supabase.deleteRow) {
+        App.Supabase.deleteRow("products", id);
+      }
       U.closeModal();
       U.toast("Product deleted.", "success");
-      refresh();
+      const { route } = parseHash();
+      if (route === "product") go("customer");
+      else refresh();
     });
   }
 
@@ -148,10 +156,7 @@ App.router = (function () {
     switch (route) {
       case "":
       case "customer":
-        if (!A.current()) { app.innerHTML = V.renderAuth(); V.bindAuth(); }
-        else if (A.current().role === "customer" || A.current().role === "seller" || A.current().role === "admin") {
-          app.innerHTML = V.renderCustomer(); V.bindCustomer();
-        }
+        app.innerHTML = V.renderCustomer(); V.bindCustomer();
         break;
       case "login":
         app.innerHTML = V.renderAuth(); V.bindAuth();

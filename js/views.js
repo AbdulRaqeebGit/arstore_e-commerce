@@ -111,12 +111,12 @@ App.Views = (function () {
       '<form id="forgotForm">' +
       '<div class="mb-3"><label class="form-label">Email</label>' +
       '<input type="email" id="fgEmail" class="form-control" placeholder="you@email.com" required></div>' +
-      '<button class="btn btn-dark w-100 py-2" type="submit"><i class="bi bi-envelope-paper"></i> Send reset code</button>' +
+      '<button id="fgSendBtn" class="btn btn-dark w-100 py-2" type="button"><i class="bi bi-envelope-paper"></i> Send reset code</button>' +
       '<div id="resetStep" class="mt-3 d-none">' +
       '<p class="hint small" id="resetHint"></p>' +
       '<div class="mb-2"><label class="form-label">6-digit code</label><input id="fgCode" class="form-control" placeholder="123456"></div>' +
       '<div class="mb-3"><label class="form-label">New password</label><input type="password" id="fgPass" class="form-control" placeholder="min 6 characters"></div>' +
-      '<button class="btn btn-dark w-100 py-2" type="submit"><i class="bi bi-shield-check"></i> Reset password</button>' +
+      '<button id="fgResetBtn" class="btn btn-dark w-100 py-2" type="submit"><i class="bi bi-shield-check"></i> Reset password</button>' +
       '</div>' +
       '<p class="ferr" id="fgErr"></p></form>'
     );
@@ -142,11 +142,16 @@ App.Views = (function () {
       e.preventDefault();
       const err = document.getElementById("liErr");
       err.textContent = "";
+      const btn = e.target.querySelector('button[type="submit"]');
+      if (btn) btn.disabled = true;
       try {
         const u = await A.login(document.getElementById("liEmail").value, document.getElementById("liPass").value);
         U.toast("Welcome back, " + u.name + "!", "success");
         App.router.goHomeForRole(u.role);
-      } catch (ex) { err.textContent = ex.message; }
+      } catch (ex) {
+        err.textContent = ex.message;
+        if (btn) btn.disabled = false;
+      }
     });
   }
   function bindSignup() {
@@ -155,6 +160,8 @@ App.Views = (function () {
       const err = document.getElementById("suErr");
       err.textContent = "";
       const role = document.querySelector('input[name="suRole"]:checked').value;
+      const btn = e.target.querySelector('button[type="submit"]');
+      if (btn) btn.disabled = true;
       try {
         await A.signup({
           name: document.getElementById("suName").value,
@@ -164,31 +171,51 @@ App.Views = (function () {
         });
         U.toast("Account created! Please login.", "success");
         document.querySelector('#authTabs .nav-link[data-tab="login"]').click();
-      } catch (ex) { err.textContent = ex.message; }
+      } catch (ex) {
+        err.textContent = ex.message;
+        if (btn) btn.disabled = false;
+      }
     });
   }
   function bindForgot() {
     let pendingCode = null;
+    const sendBtn = document.getElementById("fgSendBtn");
+    const err = document.getElementById("fgErr");
+    const step = document.getElementById("resetStep");
+
+    function doSendCode() {
+      err.textContent = "";
+      const email = document.getElementById("fgEmail").value.trim();
+      if (!email) { err.textContent = "Please enter your email."; return; }
+      try {
+        const r = A.requestReset(email);
+        pendingCode = r.code;
+        step.classList.remove("d-none");
+        sendBtn.classList.add("d-none");
+        document.getElementById("fgEmail").readOnly = true;
+        document.getElementById("resetHint").textContent =
+          "Demo mode: your reset code is " + r.code + " (normally emailed).";
+        document.getElementById("fgCode").value = r.code;
+      } catch (ex) { err.textContent = ex.message; }
+    }
+
+    sendBtn.addEventListener("click", doSendCode);
+
     document.getElementById("forgotForm").addEventListener("submit", async (e) => {
       e.preventDefault();
-      const err = document.getElementById("fgErr");
       err.textContent = "";
-      const step = document.getElementById("resetStep");
-      const email = document.getElementById("fgEmail").value;
+      if (!pendingCode) {
+        doSendCode();
+        return;
+      }
+      const email = document.getElementById("fgEmail").value.trim();
+      const code = document.getElementById("fgCode").value.trim();
+      const newPw = document.getElementById("fgPass").value;
       try {
-        if (!pendingCode) {
-          const r = A.requestReset(email);
-          pendingCode = r.code;
-          step.classList.remove("d-none");
-          document.getElementById("resetHint").textContent =
-            "Demo mode: your reset code is " + r.code + " (normally emailed).";
-        } else {
-          const code = document.getElementById("fgCode").value.trim();
-          if (code !== pendingCode) throw new Error("Incorrect reset code.");
-          await A.resetPassword(email, code, document.getElementById("fgPass").value);
-          U.toast("Password reset! Please login.", "success");
-          document.querySelector('#authTabs .nav-link[data-tab="login"]').click();
-        }
+        if (code !== pendingCode) throw new Error("Incorrect reset code.");
+        await A.resetPassword(email, code, newPw);
+        U.toast("Password reset! Please login.", "success");
+        document.querySelector('#authTabs .nav-link[data-tab="login"]').click();
       } catch (ex) { err.textContent = ex.message; }
     });
   }
@@ -240,8 +267,8 @@ App.Views = (function () {
       if (cat) list = list.filter((p) => p.category === cat);
       if (q) {
         const qq = q.toLowerCase();
-        list = list.filter((p) => (p.title + " " + p.description + " " + p.category + " " + p.sellerName)
-          .toLowerCase().includes(qq));
+        list = list.filter((p) => [p.title, p.description, p.category, p.sellerName]
+          .filter(Boolean).join(" ").toLowerCase().includes(qq));
       }
       if (min !== "") list = list.filter((p) => p.price >= Number(min));
       if (max !== "") list = list.filter((p) => p.price <= Number(max));
@@ -419,7 +446,7 @@ App.Views = (function () {
         if (chosenImg) {
           const up = await App.Cloud.upload(chosenImg);
           imageUrl = up.url;
-          try { const im = await U.loadImage(imageUrl); palette = U.extractPalette(im, 24, 4); } catch (_) {}
+          try { const im = await U.loadImage(up.local || imageUrl); palette = U.extractPalette(im, 24, 4); } catch (_) {}
         } else {
           imageUrl = genImage.dataUrl || genImage.url;
           try { const im = await U.loadImage(genImage.dataUrl || genImage.url); palette = U.extractPalette(im, 24, 4); } catch (_) {}
@@ -579,23 +606,35 @@ App.Views = (function () {
       '<li class="list-group-item px-0 bg-transparent"><i class="bi bi-geo-alt"></i> ' + U.esc(p.city || App.CONFIG.maps.defaultCity) + '</li>' +
       '<li class="list-group-item px-0 bg-transparent"><i class="bi bi-box-seam"></i> Stock: <b>' + p.stock + '</b> left</li>' +
       '</ul>' +
-      '<button class="btn btn-dark btn-lg w-100" ' + (p.stock < 1 || !(me && me.role === "customer") ? "disabled" : "") +
-      ' onclick="App.router.go(\'buy\',\'' + p.id + '\')">' +
-      (p.stock < 1 ? '<i class="bi bi-x-circle"></i> Out of stock' : (me && me.role === "customer" ? '<i class="bi bi-bag-check"></i> Buy now' : '<i class="bi bi-lock"></i> Customer-only')) + '</button>' +
-      (me && me.role !== "customer"
-        ? '<p class="hint small mt-2 mb-0">You are logged in as <b>' + U.esc(me.role) + '</b>. Settings se account type switch karein.</p>'
-        : '') +
+      (!me ?
+        '<button class="btn btn-dark btn-lg w-100" onclick="App.router.go(\'login\')"><i class="bi bi-box-arrow-in-right"></i> Login to buy</button>' :
+        (me.role === "customer" ?
+          '<button class="btn btn-dark btn-lg w-100" ' + (p.stock < 1 ? "disabled" : "") +
+          ' onclick="App.router.go(\'buy\',\'' + p.id + '\')">' +
+          (p.stock < 1 ? '<i class="bi bi-x-circle"></i> Out of stock' : '<i class="bi bi-bag-check"></i> Buy now') + '</button>' :
+          '<button class="btn btn-outline-dark btn-lg w-100" disabled><i class="bi bi-lock"></i> Customer-only feature</button>' +
+          '<p class="hint small mt-2 mb-0">You are logged in as <b>' + U.esc(me.role) + '</b>. Settings se account type switch karein.</p>'
+        )
+      ) +
+      '<div class="d-flex gap-2 mt-2">' +
+      '<button class="btn btn-outline-dark flex-fill" id="addToCartBtn"><i class="bi bi-cart-plus"></i> Add to Cart</button>' +
+      '<button class="btn btn-outline-dark" id="addToWishBtn" title="Add to Wishlist"><i class="bi bi-heart"></i></button>' +
+      '</div>' +
       '</div></div>' +
       '<div class="mt-5">' +
       '<h4 class="fw-bold mb-3">Reviews & comments <span class="text-secondary fs-6">(' + reviews.length + ')</span></h4>' +
       '<div class="card border-0 shadow-sm mb-3"><div class="card-body">' +
-      '<form id="reviewForm">' +
-      '<div class="d-flex gap-1 rate-stars mb-2" id="rateStars">' +
-      [1, 2, 3, 4, 5].map((i) => '<span data-v="' + i + '"><i class="bi bi-star-fill"></i></span>').join("") + '</div>' +
-      '<input id="revRating" type="hidden" value="5">' +
-      '<textarea id="revComment" class="form-control" rows="2" placeholder="Share your review or ask a question…"></textarea>' +
-      '<button class="btn btn-dark mt-2" type="submit"><i class="bi bi-chat-dots"></i> Post review</button>' +
-      '</form></div></div>' +
+      (!me ?
+        '<p class="hint small mb-0"><a href="#/login">Login</a> to share your review or rate this product.</p>' :
+        '<form id="reviewForm">' +
+        '<div class="d-flex gap-1 rate-stars mb-2" id="rateStars">' +
+        [1, 2, 3, 4, 5].map((i) => '<span data-v="' + i + '"><i class="bi bi-star-fill"></i></span>').join("") + '</div>' +
+        '<input id="revRating" type="hidden" value="5">' +
+        '<textarea id="revComment" class="form-control" rows="2" placeholder="Share your review or ask a question…"></textarea>' +
+        '<button class="btn btn-dark mt-2" type="submit"><i class="bi bi-chat-dots"></i> Post review</button>' +
+        '</form>'
+      ) +
+      '</div></div>' +
       '<div id="reviewList"></div>' +
       '</div></div>'
     );
@@ -606,31 +645,75 @@ App.Views = (function () {
     if (!p) return;
 
     const stars = document.querySelectorAll("#rateStars span");
+    let selectedRating = 5;
     function paint(v) {
       stars.forEach((s) => s.classList.toggle("on", Number(s.dataset.v) <= v));
-      document.getElementById("revRating").value = v;
     }
     stars.forEach((s) => {
-      s.addEventListener("click", () => paint(Number(s.dataset.v)));
+      s.addEventListener("click", () => {
+        selectedRating = Number(s.dataset.v);
+        const inp = document.getElementById("revRating");
+        if (inp) inp.value = selectedRating;
+        paint(selectedRating);
+      });
       s.addEventListener("mouseenter", () => paint(Number(s.dataset.v)));
     });
+    const starBox = document.getElementById("rateStars");
+    if (starBox) starBox.addEventListener("mouseleave", () => paint(selectedRating));
     paint(5);
 
-    document.getElementById("reviewForm").addEventListener("submit", (e) => {
-      e.preventDefault();
-      const me = A.current();
-      const comment = document.getElementById("revComment").value.trim();
-      if (!comment) { U.toast("Write something first.", "warn"); return; }
-      const reviews = S.getReviews();
-      reviews.push({
-        id: U.uid("r"), productId: p.id, userId: me.id, userName: me.name,
-        rating: Number(document.getElementById("revRating").value),
-        comment: comment, createdAt: Date.now(),
+    const rForm = document.getElementById("reviewForm");
+    if (rForm) {
+      rForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const me = A.current();
+        if (!me) {
+          U.toast("Please login to post a review.", "warn");
+          App.router.go("login");
+          return;
+        }
+        const comment = document.getElementById("revComment").value.trim();
+        if (!comment) { U.toast("Write something first.", "warn"); return; }
+        const reviews = S.getReviews();
+        reviews.push({
+          id: U.uid("r"), productId: p.id, userId: me.id, userName: me.name,
+          rating: Number(document.getElementById("revRating").value) || 5,
+          comment: comment, createdAt: Date.now(),
+        });
+        S.saveReviews(reviews);
+        App.router.refresh();
+        U.toast("Review posted!", "success");
       });
-      S.saveReviews(reviews);
-      App.router.refresh();
-      U.toast("Review posted!", "success");
-    });
+    }
+
+    const cartBtn = document.getElementById("addToCartBtn");
+    if (cartBtn) {
+      cartBtn.addEventListener("click", () => {
+        const cart = S.getCart();
+        const existing = cart.find((x) => x.id === p.id);
+        if (existing) {
+          existing.qty = (existing.qty || 1) + 1;
+        } else {
+          cart.push({ id: p.id, title: p.title, price: p.price, image: p.image, emoji: p.emoji, qty: 1 });
+        }
+        S.saveCart(cart);
+        U.toast("Added to Cart!", "success");
+      });
+    }
+
+    const wishBtn = document.getElementById("addToWishBtn");
+    if (wishBtn) {
+      wishBtn.addEventListener("click", () => {
+        const wish = S.getWishlist();
+        if (!wish.some((x) => x.id === p.id)) {
+          wish.push(p);
+          S.saveWishlist(wish);
+          U.toast("Added to Wishlist!", "success");
+        } else {
+          U.toast("Already in Wishlist!", "info");
+        }
+      });
+    }
 
     renderReviewList(id);
   }
@@ -653,6 +736,7 @@ App.Views = (function () {
   function renderBuy(id) {
     const p = S.getProducts().find((x) => x.id === id);
     if (!p) return emptyState("bi-emoji-frown", "Product not found", "");
+    const me = A.current();
     return (
       '<div class="view d-flex justify-content-center">' +
       '<div class="card border-0 shadow-lg w-100" style="max-width:540px">' +
@@ -661,17 +745,17 @@ App.Views = (function () {
       '<div class="d-flex align-items-center gap-3 border rounded-3 p-2 mb-3">' +
       '<div class="ratio ratio-1x1" style="width:64px;flex:0 0 auto"><img src="' + U.esc(p.image) + '" class="object-fit-cover rounded-2" ' +
       'onerror="this.onerror=null;this.src=\'' + S.svgProduct(p.emoji || "🛍️", "#ededed", "#d8d8d8") + '\'"></div>' +
-      '<div><div class="fw-semibold">' + U.esc(p.title) + '</div><div class="text-secondary small">' + U.money(p.price) + '</div></div>' +
+      '<div><div class="fw-semibold">' + U.esc(p.title) + '</div><div class="text-secondary small">' + U.money(p.price) + ' • Stock: ' + p.stock + '</div></div>' +
       '</div>' +
       '<form id="buyForm">' +
       '<div class="row g-2 mb-3">' +
-      '<div class="col-6"><label class="form-label">Full name</label><input id="byName" class="form-control" required></div>' +
-      '<div class="col-6"><label class="form-label">Phone</label><input id="byPhone" class="form-control" required></div>' +
+      '<div class="col-6"><label class="form-label">Full name</label><input id="byName" class="form-control" value="' + U.esc(me ? me.name : '') + '" required></div>' +
+      '<div class="col-6"><label class="form-label">Phone</label><input id="byPhone" class="form-control" value="' + U.esc(me ? (me.phone || '') : '') + '" placeholder="+92 300 1234567" required></div>' +
       '</div>' +
-      '<div class="mb-3"><label class="form-label">Delivery address</label><textarea id="byAddr" class="form-control" rows="2" required></textarea></div>' +
+      '<div class="mb-3"><label class="form-label">Delivery address</label><textarea id="byAddr" class="form-control" rows="2" placeholder="Street, area, city" required>' + U.esc(me ? (me.city || '') : '') + '</textarea></div>' +
       '<div class="row g-2 mb-3">' +
-      '<div class="col-6"><label class="form-label">Quantity</label><input id="byQty" type="number" min="1" value="1" class="form-control" required></div>' +
-      '<div class="col-6"><label class="form-label">Payment</label><select class="form-select"><option>Cash on Delivery</option><option>Bank Transfer</option></select></div>' +
+      '<div class="col-6"><label class="form-label">Quantity</label><input id="byQty" type="number" min="1" max="' + p.stock + '" value="1" class="form-control" required></div>' +
+      '<div class="col-6"><label class="form-label">Payment</label><select id="byPayment" class="form-select"><option>Cash on Delivery</option><option>Bank Transfer</option></select></div>' +
       '</div>' +
       '<div class="d-flex justify-content-between align-items-center border-top pt-3 mb-3">' +
       '<span class="text-secondary">Total</span><b class="fs-4" id="coTotal">' + U.money(p.price) + '</b></div>' +
@@ -685,26 +769,274 @@ App.Views = (function () {
     const p = S.getProducts().find((x) => x.id === id);
     if (!p) return;
     const qty = document.getElementById("byQty");
-    qty.addEventListener("input", () => {
-      document.getElementById("coTotal").textContent = U.money(p.price * (Number(qty.value) || 1));
-    });
-    document.getElementById("buyForm").addEventListener("submit", (e) => {
+    if (qty) {
+      qty.addEventListener("input", () => {
+        const val = Math.max(1, Number(qty.value) || 1);
+        document.getElementById("coTotal").textContent = U.money(p.price * val);
+      });
+    }
+    const buyForm = document.getElementById("buyForm");
+    if (!buyForm) return;
+
+    buyForm.addEventListener("submit", (e) => {
       e.preventDefault();
       const err = document.getElementById("byErr");
-      const n = Number(qty.value) || 1;
-      if (n > p.stock) { err.textContent = "Only " + p.stock + " in stock."; return; }
+      err.textContent = "";
       const me = A.current();
+      if (!me) {
+        U.toast("Please log in to complete checkout.", "warn");
+        App.router.go("login");
+        return;
+      }
+      const n = Number(qty.value) || 1;
+      if (n < 1) { err.textContent = "Quantity must be at least 1."; return; }
+      if (p.stock < 1) { err.textContent = "Product is out of stock."; return; }
+      if (n > p.stock) { err.textContent = "Only " + p.stock + " in stock."; return; }
+
+      const name = document.getElementById("byName").value.trim();
+      const phone = document.getElementById("byPhone").value.trim();
+      const addr = document.getElementById("byAddr").value.trim();
+      const payEl = document.getElementById("byPayment");
+      const payment = payEl ? payEl.value : "Cash on Delivery";
+
       const orders = S.getOrders();
       orders.push({
-        id: U.uid("o"), productId: p.id, buyerId: me.id, buyerName: document.getElementById("byName").value.trim(),
-        sellerId: p.sellerId, productTitle: p.title, qty: n, total: p.price * n,
-        createdAt: Date.now(), status: "Pending",
+        id: U.uid("o"),
+        productId: p.id,
+        buyerId: me.id,
+        buyerName: name || me.name,
+        buyerPhone: phone,
+        buyerAddress: addr,
+        sellerId: p.sellerId,
+        productTitle: p.title,
+        qty: n,
+        total: p.price * n,
+        paymentMethod: payment,
+        createdAt: Date.now(),
+        status: "Pending",
       });
       S.saveOrders(orders);
-      const products = S.getProducts().map((x) => x.id === p.id ? Object.assign({}, x, { stock: x.stock - n }) : x);
+
+      const products = S.getProducts().map((x) => x.id === p.id ? Object.assign({}, x, { stock: Math.max(0, x.stock - n) }) : x);
       S.saveProducts(products);
-      U.toast("Order placed! Seller will contact you.", "success");
-      App.router.go("customer");
+
+      // Remove from cart if item was there
+      const cart = S.getCart().filter((c) => c.id !== p.id);
+      S.saveCart(cart);
+
+      U.toast("Order placed successfully! Seller will process your order.", "success");
+      App.router.go("orders");
+    });
+  }
+
+  /* ================= ORDERS ================= */
+  function renderOrders() {
+    const me = A.current();
+    if (!me) return emptyState("bi-receipt", "Please log in", "Log in to view your orders.");
+
+    let orders = S.getOrders();
+    let title = "Orders";
+    let subtitle = "View and manage orders.";
+
+    if (me.role === "customer") {
+      orders = orders.filter((o) => o.buyerId === me.id);
+      title = "My Orders";
+      subtitle = "Track products you have ordered.";
+    } else if (me.role === "seller") {
+      orders = orders.filter((o) => o.sellerId === me.id);
+      title = "Customer Orders";
+      subtitle = "Orders placed for your store products.";
+    } else if (me.role === "admin") {
+      title = "All Marketplace Orders";
+      subtitle = "Admin view of all customer transactions.";
+    }
+
+    orders.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+    return (
+      '<div class="view">' +
+      '<div class="d-flex justify-content-between align-items-center mb-4 reveal">' +
+      '<div><h3 class="fw-bold mb-1">' + U.esc(title) + '</h3>' +
+      '<p class="text-secondary mb-0">' + U.esc(subtitle) + '</p></div>' +
+      '<span class="badge text-bg-dark rounded-pill px-3 py-2 fs-6">' + orders.length + ' order' + (orders.length === 1 ? '' : 's') + '</span>' +
+      '</div>' +
+      '<div id="ordersContainer">' +
+      (orders.length ?
+        '<div class="table-responsive card border-0 shadow-sm p-3">' +
+        '<table class="table table-hover align-middle mb-0">' +
+        '<thead><tr>' +
+        '<th>Order #</th>' +
+        '<th>Product</th>' +
+        (me.role !== "customer" ? '<th>Customer Details</th>' : '<th>Seller</th>') +
+        '<th>Qty</th>' +
+        '<th>Total</th>' +
+        '<th>Payment</th>' +
+        '<th>Status</th>' +
+        '<th>Date</th>' +
+        (me.role === "seller" || me.role === "admin" ? '<th>Action</th>' : '') +
+        '</tr></thead>' +
+        '<tbody>' +
+        orders.map((o) => {
+          const seller = S.findById(o.sellerId);
+          return (
+            '<tr>' +
+            '<td class="small font-monospace fw-semibold">' + U.esc(o.id.slice(-8)) + '</td>' +
+            '<td><div class="fw-semibold">' + U.esc(o.productTitle || "Product") + '</div></td>' +
+            (me.role !== "customer" ?
+              '<td><div class="fw-semibold">' + U.esc(o.buyerName || "Customer") + '</div>' +
+              (o.buyerPhone ? '<div class="small text-secondary"><i class="bi bi-telephone"></i> ' + U.esc(o.buyerPhone) + '</div>' : '') +
+              (o.buyerAddress ? '<div class="small text-secondary"><i class="bi bi-geo-alt"></i> ' + U.esc(o.buyerAddress) + '</div>' : '') +
+              '</td>' :
+              '<td><div class="small text-secondary">' + U.esc(seller ? seller.name : "Seller") + '</div></td>'
+            ) +
+            '<td>' + (o.qty || 1) + '</td>' +
+            '<td class="fw-bold">' + U.money(o.total) + '</td>' +
+            '<td class="small text-secondary">' + U.esc(o.paymentMethod || "COD") + '</td>' +
+            '<td><span class="badge rounded-pill ' + (o.status === "Completed" ? "bg-success" : "bg-warning text-dark") + '">' + U.esc(o.status || "Pending") + '</span></td>' +
+            '<td class="text-secondary small">' + U.timeAgo(o.createdAt) + '</td>' +
+            (me.role === "seller" || me.role === "admin" ?
+              '<td><button class="btn btn-sm btn-outline-dark toggle-order-btn" data-id="' + o.id + '">' +
+              (o.status === "Completed" ? '<i class="bi bi-arrow-counterclockwise"></i> Pending' : '<i class="bi bi-check-lg"></i> Complete') +
+              '</button></td>' : '') +
+            '</tr>'
+          );
+        }).join('') +
+        '</tbody></table></div>' :
+        emptyState("bi-receipt", "No orders yet", me.role === "customer" ? "Explore products and place your first order!" : "Orders from customers will appear here.")
+      ) +
+      '</div></div>'
+    );
+  }
+
+  function bindOrders() {
+    document.querySelectorAll(".toggle-order-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const id = btn.dataset.id;
+        const orders = S.getOrders().map((o) => {
+          if (o.id === id) {
+            return Object.assign({}, o, { status: o.status === "Completed" ? "Pending" : "Completed" });
+          }
+          return o;
+        });
+        S.saveOrders(orders);
+        U.toast("Order status updated!", "success");
+        App.router.refresh();
+      });
+    });
+  }
+
+  /* ================= CART ================= */
+  function renderCart() {
+    const cart = S.getCart();
+    const total = cart.reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.qty) || 1), 0);
+
+    return (
+      '<div class="view">' +
+      '<div class="d-flex justify-content-between align-items-center mb-4 reveal">' +
+      '<div><h3 class="fw-bold mb-1">Shopping Cart</h3>' +
+      '<p class="text-secondary mb-0">Review items before checkout.</p></div>' +
+      '<span class="badge text-bg-dark rounded-pill px-3 py-2 fs-6">' + cart.length + ' item' + (cart.length === 1 ? '' : 's') + '</span>' +
+      '</div>' +
+      (cart.length ?
+        '<div class="row g-4"><div class="col-lg-8">' +
+        '<div class="card border-0 shadow-sm p-3">' +
+        cart.map((item, idx) =>
+          '<div class="d-flex align-items-center gap-3 py-3 ' + (idx < cart.length - 1 ? 'border-bottom' : '') + '">' +
+          '<div class="ratio ratio-1x1" style="width:65px;flex:0 0 auto">' +
+          '<img src="' + U.esc(item.image) + '" class="object-fit-cover rounded-2" onerror="this.onerror=null;this.src=\'' + S.svgProduct(item.emoji || "🛍️", "#ededed", "#d8d8d8") + '\'">' +
+          '</div>' +
+          '<div class="flex-grow-1 min-w-0">' +
+          '<h6 class="fw-bold mb-1 text-truncate">' + U.esc(item.title) + '</h6>' +
+          '<div class="text-secondary small">' + U.money(item.price) + ' &times; ' + item.qty + '</div>' +
+          '</div>' +
+          '<div class="fw-bold fs-6">' + U.money((item.price || 0) * (item.qty || 1)) + '</div>' +
+          '<button class="btn btn-sm btn-outline-dark remove-cart-btn" data-id="' + item.id + '"><i class="bi bi-trash"></i></button>' +
+          '</div>'
+        ).join('') +
+        '</div></div>' +
+        '<div class="col-lg-4">' +
+        '<div class="card border-0 shadow-sm p-4">' +
+        '<h5 class="fw-bold mb-3">Order Summary</h5>' +
+        '<div class="d-flex justify-content-between mb-2"><span class="text-secondary">Subtotal</span><b>' + U.money(total) + '</b></div>' +
+        '<div class="d-flex justify-content-between mb-3"><span class="text-secondary">Shipping</span><span class="text-success fw-semibold">Free</span></div>' +
+        '<div class="d-flex justify-content-between border-top pt-3 mb-4"><span class="fs-5 fw-bold">Total</span><span class="fs-4 fw-bold">' + U.money(total) + '</span></div>' +
+        '<button class="btn btn-dark btn-lg w-100" id="checkoutCartBtn"><i class="bi bi-bag-check"></i> Checkout</button>' +
+        '</div></div></div>' :
+        emptyState("bi-cart", "Your cart is empty", "Browse our shop and add some items.")
+      ) +
+      '</div>'
+    );
+  }
+
+  function bindCart() {
+    document.querySelectorAll(".remove-cart-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const id = btn.dataset.id;
+        const cart = S.getCart().filter((x) => x.id !== id);
+        S.saveCart(cart);
+        U.toast("Item removed from cart.", "info");
+        App.router.refresh();
+      });
+    });
+    const coBtn = document.getElementById("checkoutCartBtn");
+    if (coBtn) {
+      coBtn.addEventListener("click", () => {
+        const cart = S.getCart();
+        if (!cart.length) return;
+        const me = A.current();
+        if (!me) {
+          U.toast("Please login to checkout.", "warn");
+          App.router.go("login");
+          return;
+        }
+        App.router.go("buy", cart[0].id);
+      });
+    }
+  }
+
+  /* ================= WISHLIST ================= */
+  function renderWishlist() {
+    const list = S.getWishlist();
+    return (
+      '<div class="view">' +
+      '<div class="d-flex justify-content-between align-items-center mb-4 reveal">' +
+      '<div><h3 class="fw-bold mb-1">My Wishlist</h3>' +
+      '<p class="text-secondary mb-0">Saved products for later.</p></div>' +
+      '<span class="badge text-bg-dark rounded-pill px-3 py-2 fs-6">' + list.length + ' item' + (list.length === 1 ? '' : 's') + '</span>' +
+      '</div>' +
+      (list.length ?
+        '<div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-lg-4 g-3 grid-stagger">' +
+        list.map((p) =>
+          '<div class="col">' +
+          '<div class="card h-100 product-card border-0 shadow-sm">' +
+          '<div class="ratio ratio-1x1 product-img">' +
+          '<img src="' + U.esc(p.image) + '" alt="' + U.esc(p.title) + '" loading="lazy" ' +
+          'onerror="this.onerror=null;this.src=\'' + S.svgProduct(p.emoji || "🛍️", "#ededed", "#d8d8d8") + '\'">' +
+          '</div>' +
+          '<div class="card-body d-flex flex-column p-3">' +
+          '<h6 class="card-title fw-bold">' + U.esc(p.title) + '</h6>' +
+          '<div class="fw-bold mt-auto mb-2">' + U.money(p.price) + '</div>' +
+          '<div class="d-flex gap-2">' +
+          '<button class="btn btn-sm btn-dark flex-fill" onclick="App.router.go(\'product\',\'' + p.id + '\')"><i class="bi bi-eye"></i> View</button>' +
+          '<button class="btn btn-sm btn-outline-dark remove-wish-btn" data-id="' + p.id + '"><i class="bi bi-trash"></i></button>' +
+          '</div></div></div></div>'
+        ).join('') +
+        '</div>' :
+        emptyState("bi-heart", "Your wishlist is empty", "Save products to your wishlist to find them easily.")
+      ) +
+      '</div>'
+    );
+  }
+
+  function bindWishlist() {
+    document.querySelectorAll(".remove-wish-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const id = btn.dataset.id;
+        const list = S.getWishlist().filter((x) => x.id !== id);
+        S.saveWishlist(list);
+        U.toast("Removed from wishlist.", "info");
+        App.router.refresh();
+      });
     });
   }
 
@@ -713,12 +1045,12 @@ App.Views = (function () {
     const users = S.getUsers();
     const products = S.getProducts();
     const orders = S.getOrders();
-    const revenue = orders.reduce((a, b) => a + b.total, 0);
+    const revenue = orders.reduce((a, b) => a + (Number(b.total) || 0), 0);
     const sellers = users.filter((u) => u.role === "seller").length;
     const customers = users.filter((u) => u.role === "customer").length;
     return (
       '<div class="view">' +
-      '<div class="mb-4 reveal"><h3 class="fw-bold mb-1">Admin Dashboard</h3><p class="text-secondary mb-0">Manage users and products.</p></div>' +
+      '<div class="mb-4 reveal"><h3 class="fw-bold mb-1">Admin Dashboard</h3><p class="text-secondary mb-0">Manage users, products, and orders.</p></div>' +
       '<div class="row row-cols-2 row-cols-md-4 g-3 mb-4">' +
       '<div class="col"><div class="card stat-card border-0 shadow-sm text-center"><div class="card-body">' +
       '<div class="stat-ic"><i class="bi bi-people"></i></div><div class="fs-4 fw-bold" data-count="' + customers + '">0</div><small class="text-secondary">Customers</small></div></div></div>' +
@@ -733,6 +1065,7 @@ App.Views = (function () {
       '<ul class="nav nav-pills p-3 pb-0 gap-2" id="adminTabs">' +
       '<li class="nav-item"><button class="nav-link active" data-tab="users">Users</button></li>' +
       '<li class="nav-item"><button class="nav-link" data-tab="products">Products</button></li>' +
+      '<li class="nav-item"><button class="nav-link" data-tab="orders">Orders</button></li>' +
       '</ul>' +
       '<div id="adminTable" class="p-3"></div>' +
       '</div></div></div>'
@@ -768,10 +1101,41 @@ App.Views = (function () {
         ).join("") + '</tbody></table></div>'
         : emptyState("bi-box-seam", "No products yet", "Sellers ki products yahan aayengi.");
     }
+    function showOrders() {
+      const orders = S.getOrders().slice().sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      box.innerHTML = orders.length ? '<div class="table-responsive"><table class="table table-hover align-middle mb-0">' +
+        '<thead><tr><th>Order #</th><th>Product</th><th>Customer</th><th>Qty</th><th>Total</th><th>Status</th><th>Date</th><th></th></tr></thead><tbody>' +
+        orders.map((o) =>
+          '<tr><td class="small font-monospace">' + U.esc(o.id.slice(-8)) + '</td>' +
+          '<td class="fw-semibold">' + U.esc(o.productTitle) + '</td>' +
+          '<td>' + U.esc(o.buyerName) + (o.buyerPhone ? '<div class="small text-secondary">' + U.esc(o.buyerPhone) + '</div>' : '') + '</td>' +
+          '<td>' + o.qty + '</td>' +
+          '<td class="fw-bold">' + U.money(o.total) + '</td>' +
+          '<td><span class="badge rounded-pill ' + (o.status === "Completed" ? "bg-success" : "bg-warning text-dark") + '">' + U.esc(o.status || "Pending") + '</span></td>' +
+          '<td class="text-secondary small">' + U.timeAgo(o.createdAt) + '</td>' +
+          '<td><button class="btn btn-sm btn-outline-dark toggle-order-btn" data-id="' + o.id + '">' +
+          (o.status === "Completed" ? '<i class="bi bi-arrow-counterclockwise"></i> Pending' : '<i class="bi bi-check-lg"></i> Complete') +
+          '</button></td></tr>'
+        ).join("") + '</tbody></table></div>'
+        : emptyState("bi-receipt", "No orders yet", "Customer orders will appear here.");
+
+      box.querySelectorAll(".toggle-order-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const id = btn.dataset.id;
+          const updated = S.getOrders().map((o) => o.id === id ? Object.assign({}, o, { status: o.status === "Completed" ? "Pending" : "Completed" }) : o);
+          S.saveOrders(updated);
+          U.toast("Order updated.", "success");
+          showOrders();
+        });
+      });
+    }
+
     tabs.forEach((t) => t.addEventListener("click", () => {
       tabs.forEach((x) => x.classList.remove("active"));
       t.classList.add("active");
-      t.dataset.tab === "users" ? showUsers() : showProducts();
+      if (t.dataset.tab === "users") showUsers();
+      else if (t.dataset.tab === "products") showProducts();
+      else showOrders();
     }));
     showUsers();
   }
@@ -780,6 +1144,8 @@ App.Views = (function () {
     renderAuth, bindAuth, renderCustomer, bindCustomer,
     renderSeller, bindSeller, renderSettings, bindSettings,
     renderProduct, bindProduct, renderBuy, bindBuy,
-    renderAdmin, bindAdmin, productCard, ratingSummary,
+    renderAdmin, bindAdmin, renderOrders, bindOrders,
+    renderCart, bindCart, renderWishlist, bindWishlist,
+    productCard, ratingSummary,
   };
 })();
